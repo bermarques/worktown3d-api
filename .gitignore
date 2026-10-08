@@ -1,0 +1,13 @@
+node_modules/
+
+# local mode settings (connected org, floor order, repo links)
+data/
+
+# secrets (GitHub app credentials, Stripe keys, database URL)
+.env
+.env.*
+!.env.example
+
+# local tooling
+.claude/
+*.log

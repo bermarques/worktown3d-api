@@ -1,0 +1,17 @@
+{
+  "name": "worktown3d-api",
+  "version": "0.2.0",
+  "description": "API for Worktown3D: GitHub data, sign-in, building settings and subscriptions.",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "node server.js",
+    "demo": "node server.js --demo"
+  },
+  "engines": {
+    "node": ">=20.12"
+  },
+  "dependencies": {
+    "pg": "^8.23.1"
+  }
+}
