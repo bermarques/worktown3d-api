@@ -1,0 +1,86 @@
+// Worktown3D API database (hosted mode only). Change this file, then run `npm run db:migrate:dev -- --name <change>`
+// to create a migration; deploys apply pending migrations with `npm run db:migrate`.
+
+generator client {
+  provider            = "prisma-client"
+  output              = "../src/generated/prisma"
+  moduleFormat        = "esm"
+  importFileExtension = "js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+/// A subscriber: one GitHub user and their Stripe customer and subscription.
+model Account {
+  userId            String   @id @map("user_id")
+  login             String?
+  customerId        String?  @map("customer_id")
+  subscriptionId    String?  @map("subscription_id")
+  status            String?
+  /// End of the current billing period, in milliseconds since the epoch.
+  renewsAt          BigInt?  @map("renews_at")
+  cancelAtPeriodEnd Boolean  @default(false) @map("cancel_at_period_end")
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([customerId], map: "accounts_customer_idx")
+  @@map("accounts")
+}
+
+/// An organization connected to a subscriber's plan.
+model Workspace {
+  /// Lower-cased organization login.
+  orgKey     String   @id @map("org_key")
+  org        String
+  ownerId    String   @map("owner_id")
+  ownerLogin String?  @map("owner_login")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([ownerId], map: "workspaces_owner_idx")
+  @@map("workspaces")
+}
+
+/// Stripe webhook events already handled, so retries are processed only once.
+model StripeEvent {
+  id         String   @id
+  receivedAt DateTime @default(now()) @map("received_at") @db.Timestamptz(6)
+
+  @@map("stripe_events")
+}
+
+/// A building's layout: which repositories get floors (in order) and the links between them.
+model OrgSettings {
+  /// Lower-cased organization login.
+  orgKey    String   @id @map("org_key")
+  floors    Json?
+  links     Json     @default("[]")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("org_settings")
+}
+
+/// A signed-in person or an anonymous demo visitor.
+model Session {
+  /// SHA-256 of the cookie value, so the table alone can't be used to take over a session.
+  id         String   @id
+  /// "user" (signed in with GitHub) or "demo" (anonymous sandbox).
+  kind       String
+  /// GitHub user id ("user" sessions).
+  userId     String?  @map("user_id")
+  /// GitHub profile: { id, login, name, avatarUrl } ("user" sessions).
+  user       Json?
+  /// Organization whose building is open.
+  org        String?
+  /// GitHub tokens, encrypted with AES-256-GCM ("user" sessions).
+  token      String?
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  lastSeenAt DateTime @default(now()) @map("last_seen_at") @db.Timestamptz(6)
+  /// Idle or absolute expiry, whichever comes first.
+  expiresAt  DateTime @map("expires_at") @db.Timestamptz(6)
+
+  @@index([expiresAt])
+  @@index([userId])
+  @@map("sessions")
+}
