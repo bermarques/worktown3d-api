@@ -15,12 +15,15 @@ It runs in two modes:
 
 ## Quick start (local mode)
 
+Needs Node.js 20.19+ (or 22.12+).
+
 ```bash
 npm install
-npm start            # API on http://127.0.0.1:3001
+npm run dev          # build, run and rebuild on changes: API on http://127.0.0.1:3001
 ```
 
-Then start the web app (`npm start` in the worktown3d repository) and open http://localhost:3000.
+Or build once and run it: `npm run build`, then `npm start`. Then start the web app (`npm start` in the worktown3d
+repository) and open http://localhost:3000.
 
 Without the GitHub CLI you get a fictional **demo company** (`npm run demo` forces demo mode even when `gh` is set
 up). To use your real organization, install the GitHub CLI (`winget install --id GitHub.cli` or
@@ -56,16 +59,27 @@ Then generate a **client secret** and **install the app** on your organization.
 
 ```bash
 cp .env.example .env       # then fill in PUBLIC_URL, GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET, DATABASE_URL (and GITHUB_APP_SLUG)
-npm ci --omit=dev
+npm ci
+npm run build
+npm run db:migrate         # create or update the database tables
 npm start
 ```
 
 `PUBLIC_URL` is the web app's address, the same value the web app has. Set `TRUST_PROXY=1`: requests arrive through
 the web app, which passes the client address on in `X-Forwarded-For`. Keep the API on a private network that only the
-web app can reach. Sign-in sessions live in memory, so run a single instance.
+web app can reach.
 
-Hosted mode needs **PostgreSQL** (`DATABASE_URL`): subscriptions and building settings live there, and the tables are
-created automatically on startup.
+Hosted mode needs **PostgreSQL** (`DATABASE_URL`): sign-in sessions, subscriptions and building settings live there.
+Run `npm run db:migrate` before starting a new version; the API refuses to start while migrations are pending.
+Because sessions are in the database, deploys don't sign people out and you can run more than one instance (rate
+limits and demo sandboxes are kept per instance, though).
+
+The schema is in [prisma/schema.prisma](prisma/schema.prisma). To change it, edit the schema and create a migration
+with `npm run db:migrate:dev -- --name <change>` against a development database.
+
+> **Upgrading from 0.2 (before Prisma)?** `npm run db:migrate` adopts the existing tables on its first run and keeps
+> your data. It leaves the old `schema_migrations` table alone, so the previous version can still start if you need to
+> roll back; drop it once you're happy with the upgrade.
 
 ### 3. Railway
 
@@ -79,6 +93,9 @@ Add this repository as a service next to the web app and a PostgreSQL service, w
 | `DATABASE_URL` | `${{Postgres.DATABASE_URL}}` |
 | `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `GITHUB_APP_SLUG` | from the GitHub App |
 | `STRIPE_SECRET_KEY`, `STRIPE_PRICE_ID`, `STRIPE_WEBHOOK_SECRET`, `COMPLIMENTARY_ORGS` | optional, see below |
+
+Railway builds it with `npm run build` and starts it with `npm start`. Under **Settings → Deploy**, set the
+**pre-deploy command** to `npm run db:migrate`, so each deploy applies its migrations before the new version starts.
 
 Don't generate a public domain for it. The web app reaches it at
 `http://${{worktown3d-api.RAILWAY_PRIVATE_DOMAIN}}:8080` over Railway's private network, and the API listens on IPv6
@@ -108,29 +125,30 @@ live mode and swap in the live keys.
 
 ## How it works
 
+A [NestJS](https://nestjs.com) app in TypeScript, with [Prisma](https://www.prisma.io) for PostgreSQL.
+
 ```
-server.js                HTTP server: routes, mode selection (local vs hosted), host and CSRF checks
-src/github-client.js     GitHub access: local `gh` CLI, or a signed-in user's token (hosted)
-src/github-provider.js   org/repo/member queries, permissions and mutations
-src/gh.js                GitHub CLI wrapper
-src/auth.js              "Sign in with GitHub" (OAuth web flow + PKCE, refresh, revoke)
-src/sessions.js          server-side sessions and cookies
-src/security.js          security headers, rate limits
-src/demo-provider.js     fictional company with in-memory mutations
-src/compose.js           turns issues/PRs/contributors/members into the floor model
-src/config.js            local mode settings (data/config.json)
-src/db.js                PostgreSQL pool and schema migrations
-src/settings.js          per-org building settings (PostgreSQL)
-src/billing.js           subscriptions: plans, connected orgs, who may enter, Stripe webhooks
-src/stripe.js            minimal Stripe client and webhook signature check
-src/repo.js              subscription records (PostgreSQL)
+src/main.ts                      loads .env, then starts the app (bootstrap.ts)
+src/bootstrap.ts                 Nest app: security headers and host check for every request, timeouts, shutdown
+src/app.module.ts                wires the app for its mode (local vs hosted, with or without Stripe)
+src/config/app-config.ts         settings from the environment, checked at startup
+src/common/                      errors and how they're answered, CSRF and rate limits, body parsing, response cache
+src/api/                         request context (who's asking, which building), building routes and access checks
+src/local/                       local mode: `gh` CLI state, routes, settings file (data/config.json)
+src/auth/                        "Sign in with GitHub" (OAuth web flow + PKCE, refresh, revoke)
+src/sessions/                    server-side sessions (PostgreSQL), cookies, encryption of stored secrets
+src/github/                      GitHub access (`gh` CLI or the user's token), queries and mutations, demo company,
+                                 and the floor model built from issues/PRs/contributors/members
+src/settings/                    per-org building settings (PostgreSQL)
+src/billing/                     subscriptions: plans, who may enter, Stripe client and webhooks, records (PostgreSQL)
+src/prisma/prisma.service.ts     database connection; refuses to start with pending migrations
+prisma/schema.prisma             database schema (migrations in prisma/migrations)
+scripts/migrate.mjs              `npm run db:migrate`, which also adopts databases from before Prisma
 ```
 
 Security details are in [SECURITY.md](SECURITY.md).
 
 ## Roadmap
 
-- **Prisma and proper handling.** Prisma for the database schema, migrations and queries (run migrations from
-  Railway's pre-deploy command), and proper handling of errors, validation and logging.
-- **Sessions in PostgreSQL**, so deploys don't sign people out and more than one instance can run.
+- **Validation and logging.** Request DTOs checked by validation pipes, and structured (JSON) logs.
 - **GitHub App webhooks**, so uninstalls and membership removals take effect instantly.
