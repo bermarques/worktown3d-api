@@ -1,5 +1,6 @@
 import { Injectable, Logger, type NestMiddleware } from '@nestjs/common';
 import type { NextFunction, Response } from 'express';
+import { describeError } from '../common/http-error.js';
 import { RateLimits } from '../common/rate-limits.js';
 import { sendJson } from '../common/respond.js';
 import { clientIp, sameOrigin } from '../common/security.js';
@@ -23,7 +24,7 @@ export class ApiGateMiddleware implements NestMiddleware {
     try {
       req.ctx = await this.resolver.resolve(req);
     } catch (e) {
-      logger.error(`${req.method} ${req.path}: ${e instanceof Error ? e.message : e}`, { method: req.method, path: req.path, status: 500 }, e instanceof Error ? e.stack : undefined);
+      logger.error(`${req.method} ${req.path}: ${describeError(e)}`, { method: req.method, path: req.path, status: 500 }, e instanceof Error ? e.stack : undefined);
       return sendJson(res, 500, { error: 'Something went wrong on our side' });
     }
     const who = req.ctx.session ? req.ctx.session.id : clientIp(req, this.config.trustProxy);

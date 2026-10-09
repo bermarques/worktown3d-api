@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import { Injectable, Logger, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
 import type { Request } from 'express';
-import { HttpError } from '../common/http-error.js';
+import { describeError, HttpError } from '../common/http-error.js';
 import { AppConfig } from '../config/app-config.js';
 import type { Session as SessionRow } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
@@ -211,7 +211,7 @@ export class SessionStore implements OnModuleInit, OnModuleDestroy {
     try {
       await this.prisma.session.deleteMany({ where: { expiresAt: { lt: new Date() } } });
     } catch (e) {
-      logger.warn(`Could not remove expired sessions: ${e instanceof Error ? e.message : e}`);
+      logger.warn(`Could not remove expired sessions: ${describeError(e)}`);
     }
   }
 }

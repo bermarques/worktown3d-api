@@ -50,7 +50,9 @@ only your company will use it).
 Contents *read & write* (needed to merge PRs), Commit statuses *read*, Checks *read*, and Administration *read & write*
 only if you want "New project" to create repositories. **Organization permissions:** Members *read*.
 
-**Subscribe to events:** Organization (installation and authorization events are always sent). With the webhook, uninstalling the app, removing someone from the organization or revoking the app's authorization takes effect at once; without it (`GITHUB_WEBHOOK_SECRET` unset), within a few minutes.
+**Subscribe to events:** Organization (installation and authorization events are always sent). With the webhook,
+uninstalling the app, removing someone from the organization or revoking the app's authorization takes effect at once;
+without it (`GITHUB_WEBHOOK_SECRET` unset), within a few minutes.
 
 Then generate a **client secret** and **install the app** on your organization.
 
@@ -79,6 +81,11 @@ limits and demo sandboxes are kept per instance, though).
 The schema is in [prisma/schema.prisma](prisma/schema.prisma). To change it, edit the schema and create a migration
 with `npm run db:migrate:dev -- --name <change>` against a development database.
 
+**Logs:** hosted mode writes JSON lines (`LOG_FORMAT=json`, the default there): one entry per request (method, path,
+status, duration, client address, who was signed in; never query strings), plus errors with their stack traces, so
+Railway and most log platforms can filter by field. Tokens, cookies and secrets are masked. Set `LOG_FORMAT=text` for
+readable lines, and `NEST_LOG_LEVEL=>=warn` to keep only warnings and errors.
+
 > **Upgrading from 0.2 (before Prisma)?** `npm run db:migrate` adopts the existing tables on its first run and keeps
 > your data. It leaves the old `schema_migrations` table alone, so the previous version can still start if you need to
 > roll back; drop it once you're happy with the upgrade.
@@ -94,7 +101,7 @@ Add this repository as a service next to the web app and a PostgreSQL service, w
 | `PUBLIC_URL` | the web app's public URL |
 | `DATABASE_URL` | `${{Postgres.DATABASE_URL}}` |
 | `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `GITHUB_APP_SLUG`, `GITHUB_WEBHOOK_SECRET` | from the GitHub App |
-| `LOG_FORMAT` | optional: `json` (default in hosted mode: one JSON object per line, with a line per request) or `text`. `NEST_LOG_LEVEL` (e.g. `>=warn`) narrows the levels |
+| `LOG_FORMAT`, `NEST_LOG_LEVEL` | optional, see **Logs** above |
 | `STRIPE_SECRET_KEY`, `STRIPE_PRICE_ID`, `STRIPE_WEBHOOK_SECRET`, `COMPLIMENTARY_ORGS` | optional, see below |
 
 Railway builds it with `npm run build` and starts it with `npm start`. Under **Settings → Deploy**, set the
@@ -135,7 +142,8 @@ src/main.ts                      loads .env, then starts the app (bootstrap.ts)
 src/bootstrap.ts                 Nest app: security headers and host check for every request, timeouts, shutdown
 src/app.module.ts                wires the app for its mode (local vs hosted, with or without Stripe)
 src/config/app-config.ts         settings from the environment, checked at startup
-src/common/                      errors and how they're answered, CSRF and rate limits, body parsing, response cache
+src/common/                      errors and how they're answered, request validation, logs, CSRF and rate limits,
+                                 body parsing, response cache
 src/api/                         request context (who's asking, which building), building routes and access checks
 src/local/                       local mode: `gh` CLI state, routes, settings file (data/config.json)
 src/auth/                        "Sign in with GitHub" (OAuth web flow + PKCE, refresh, revoke)
@@ -144,6 +152,7 @@ src/github/                      GitHub access (`gh` CLI or the user's token), q
                                  and the floor model built from issues/PRs/contributors/members
 src/settings/                    per-org building settings (PostgreSQL)
 src/billing/                     subscriptions: plans, who may enter, Stripe client and webhooks, records (PostgreSQL)
+src/webhooks/                    GitHub App webhooks: uninstalls, membership removals, revoked authorizations
 src/prisma/prisma.service.ts     database connection; refuses to start with pending migrations
 prisma/schema.prisma             database schema (migrations in prisma/migrations)
 scripts/migrate.mjs              `npm run db:migrate`, which also adopts databases from before Prisma

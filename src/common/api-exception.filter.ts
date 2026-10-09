@@ -4,15 +4,14 @@ import type { ApiRequest } from '../api/context.js';
 import { AppConfig } from '../config/app-config.js';
 import { GhError } from '../github/gh.js';
 import { SessionStore } from '../sessions/session.store.js';
-import { HttpError, statusOf } from './http-error.js';
+import { describeError, HttpError, statusOf } from './http-error.js';
 import { sendJson, sendText } from './respond.js';
 
 const logger = new Logger('Api');
-const messageOf = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 /** The path only: query strings can carry secrets (an OAuth code on /auth/callback). */
 function logFailure(req: ApiRequest, e: unknown, status = 500) {
-  logger.error(`${req.method} ${req.path}: ${messageOf(e)}`, { method: req.method, path: req.path, status }, e instanceof Error ? e.stack : undefined);
+  logger.error(`${req.method} ${req.path}: ${describeError(e)}`, { method: req.method, path: req.path, status }, e instanceof Error ? e.stack : undefined);
 }
 
 /**

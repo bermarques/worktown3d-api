@@ -12,7 +12,8 @@ const REDACT = ['authorization', 'cookie', 'token', 'secret', 'password'];
  */
 export class AppLogger extends ConsoleLogger {
   constructor(format: 'json' | 'text') {
-    super({ json: format === 'json', flattenParams: true, redact: REDACT });
+    // Colors only in a terminal: escape codes would clutter log files and log platforms.
+    super({ json: format === 'json', colors: format === 'text' && !!process.stdout.isTTY, flattenParams: true, redact: REDACT });
   }
 
   override log(message: unknown, ...rest: unknown[]) {

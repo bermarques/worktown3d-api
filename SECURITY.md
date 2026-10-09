@@ -29,11 +29,16 @@ protection). Don't expose local mode to a network.
   time, under a row lock) and revoked on sign-out. A copy of the sessions table alone can't be used to act as anyone,
   and rotating `GITHUB_CLIENT_SECRET` signs everyone out.
 - Access to a building requires active membership of that organization, re-checked every few minutes, so people
-  who leave lose access. Worktown3D's own settings (floor layout, repo connections) can only be changed by org owners.
+  who leave lose access. With the GitHub App webhook (`GITHUB_WEBHOOK_SECRET`) it's immediate: uninstalling the app or
+  removing someone from the organization sends the affected sessions back to the building picker (where access is
+  checked again with GitHub), and revoking the app's authorization ends that person's sessions. Deliveries
+  (`/api/github/webhook`) are only accepted with a valid `X-Hub-Signature-256` (HMAC-SHA256, constant-time compare). Worktown3D's own settings (floor layout, repo connections) can only be changed by org owners.
 - Cached GitHub data is namespaced per user, so one person's private data never reaches another.
 - Writes need the `X-Worktown3D` header and a matching `Origin`. Security headers on every response, rate limits on
   sign-in, API and writes (keyed by the client address the web app forwards when `TRUST_PROXY=1`), request size and
-  time limits. Internal error details stay in the server log.
+  time limits. Request bodies are checked against a schema per route, and unknown fields are dropped.
+- Internal error details stay in the server log. Logs never include query strings (which can carry sign-in codes),
+  and fields named like tokens, cookies, secrets or passwords are masked.
 - The unauthenticated demo runs in a private in-memory sandbox per visitor with size limits (its session is in
   PostgreSQL like any other, its sandbox in the memory of each instance).
 

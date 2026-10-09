@@ -1,5 +1,8 @@
 // Request bodies of the building routes. Size caps and trimming (title length, at most 10 assignees…) stay in the
 // handlers, which accept long input and cut it down rather than reject it.
+//
+// class-validator runs a property's checks from the bottom up and reports the first failure, so the type check
+// sits right above each property and the finer checks above it.
 import { Type } from 'class-transformer';
 import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsOptional, IsString, Matches, ValidateIf, ValidateNested } from 'class-validator';
 import { LOGIN_RE, REPO_RE } from '../common/match.pipe.js';
@@ -7,6 +10,7 @@ import type { MergeMethod } from '../github/types.js';
 
 const REPO = { message: 'Invalid repository name' };
 const ASSIGNEES = { each: true, message: 'Invalid assignee' };
+const TITLE = { message: 'An issue needs a title' };
 
 export class RepoLinkDto {
   @Matches(REPO_RE, REPO)
@@ -24,16 +28,16 @@ export class RepoLinkDto {
 export class SettingsDto {
   /** Repos with a floor, bottom to top. */
   @ValidateIf((o) => o.floors !== undefined)
-  @IsArray({ message: 'floors must be an array' })
-  @ArrayMaxSize(500, { message: 'floors must be an array' })
   @Matches(REPO_RE, { each: true, ...REPO })
+  @ArrayMaxSize(500, { message: 'floors must be an array' })
+  @IsArray({ message: 'floors must be an array' })
   floors?: string[];
 
   @ValidateIf((o) => o.links !== undefined)
-  @IsArray({ message: 'links must be an array of at most 200' })
-  @ArrayMaxSize(200, { message: 'links must be an array of at most 200' })
   @ValidateNested({ each: true, ...REPO })
   @Type(() => RepoLinkDto)
+  @ArrayMaxSize(200, { message: 'links must be an array of at most 200' })
+  @IsArray({ message: 'links must be an array of at most 200' })
   links?: RepoLinkDto[];
 }
 
@@ -57,8 +61,8 @@ export class CreateRepoDto {
 }
 
 export class CreateIssueDto {
-  @IsString({ message: 'An issue needs a title' })
-  @Matches(/\S/, { message: 'An issue needs a title' })
+  @Matches(/\S/, TITLE)
+  @IsString(TITLE)
   title!: string;
 
   @IsOptional()
@@ -66,20 +70,20 @@ export class CreateIssueDto {
   body?: string;
 
   @IsOptional()
-  @IsArray({ message: 'assignees must be a list' })
   @Matches(LOGIN_RE, ASSIGNEES)
+  @IsArray({ message: 'assignees must be a list' })
   assignees?: string[];
 
   @IsOptional()
-  @IsArray({ message: 'labels must be a list' })
   @IsString({ each: true, message: 'Labels must be text' })
+  @IsArray({ message: 'labels must be a list' })
   labels?: string[];
 }
 
 export class UpdateIssueDto {
   @IsOptional()
-  @IsArray({ message: 'assignees must be a list' })
   @Matches(LOGIN_RE, ASSIGNEES)
+  @IsArray({ message: 'assignees must be a list' })
   assignees?: string[];
 
   @IsOptional()
