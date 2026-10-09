@@ -39,9 +39,12 @@ export class AppConfig {
   readonly allowedHosts: Set<string>;
   /** Lower-cased organizations this server opens buildings for; empty means any. */
   readonly allowedOrgs: string[];
-  readonly github: { clientId: string; clientSecret: string; scopes: string; appSlug: string | null } | null;
+  /** `webhookSecret`: GitHub App webhooks are on (uninstalls and membership removals apply instantly). */
+  readonly github: { clientId: string; clientSecret: string; scopes: string; appSlug: string | null; webhookSecret: string | null } | null;
   readonly databaseUrl: string | null;
   readonly stripe: { secretKey: string; priceId: string; webhookSecret: string; complimentaryOrgs: string[] } | null;
+  /** json: one JSON object per line (for log platforms); text: readable lines. */
+  readonly logFormat: 'json' | 'text';
 
   constructor(env: NodeJS.ProcessEnv = process.env, argv: string[] = process.argv) {
     this.port = Number(env.PORT) || 3001;
@@ -76,6 +79,7 @@ export class AppConfig {
           clientSecret: env.GITHUB_CLIENT_SECRET!,
           scopes: env.GITHUB_OAUTH_SCOPES ?? 'read:org repo',
           appSlug: env.GITHUB_APP_SLUG || null,
+          webhookSecret: env.GITHUB_WEBHOOK_SECRET || null,
         }
       : null;
 
@@ -95,6 +99,10 @@ export class AppConfig {
             complimentaryOrgs: list(env.COMPLIMENTARY_ORGS),
           }
         : null;
+
+    const logFormat = env.LOG_FORMAT || (this.hosted ? 'json' : 'text');
+    if (logFormat !== 'json' && logFormat !== 'text') throw new ConfigError('LOG_FORMAT must be json or text.');
+    this.logFormat = logFormat;
   }
 
   orgAllowed(owner: string) {

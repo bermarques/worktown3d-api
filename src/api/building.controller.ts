@@ -6,15 +6,11 @@ import { sendText } from '../common/respond.js';
 import { ViewCache } from '../common/view-cache.js';
 import { AppConfig } from '../config/app-config.js';
 import { fetchAvatar } from '../github/github-provider.js';
-import type { IssuePatch, MergeMethod } from '../github/types.js';
+import type { IssuePatch } from '../github/types.js';
 import type { RepoLink } from '../settings/settings.service.js';
+import { CreateIssueDto, CreateRepoDto, MergeDto, SettingsDto, UpdateIssueDto } from './building.dto.js';
 import { BuildingService } from './building.service.js';
 import { Ctx, type ApiContext } from './context.js';
-
-// Request bodies are parsed JSON objects, checked field by field below.
-type Json = Record<string, any>;
-
-const list = (v: unknown, max = 20): unknown[] => (Array.isArray(v) ? v.slice(0, max) : []);
 
 /** A building: its floors, issues and pull requests, and the layout settings (both modes). */
 @Controller('api')
@@ -59,23 +55,13 @@ export class BuildingController {
 
   // Building layout (floors + links) is Worktown3D's own data, not GitHub's, so we enforce who may change it.
   @Put('settings')
-  async settings(@Ctx() context: ApiContext, @Body() body: Json) {
+  async settings(@Ctx() context: ApiContext, @Body() body: SettingsDto) {
     const { ctx, access } = await this.building.requireBuilding(context);
     if (!access.canManage) throw new HttpError(403, 'Only organization owners can change the building layout');
     const world = await this.building.getWorld(ctx);
     const patch: { floors?: string[]; links?: RepoLink[] } = {};
-    if (body.floors !== undefined) {
-      if (!Array.isArray(body.floors) || body.floors.length > 500) throw new HttpError(400, 'floors must be an array');
-      patch.floors = [...new Set(body.floors.map((f) => need(f, REPO_RE, 'repository name')))];
-    }
-    if (body.links !== undefined) {
-      if (!Array.isArray(body.links) || body.links.length > 200) throw new HttpError(400, 'links must be an array of at most 200');
-      patch.links = body.links.map((l) => ({
-        from: need(l && l.from, REPO_RE, 'repository name'),
-        to: need(l && l.to, REPO_RE, 'repository name'),
-        kind: String((l && l.kind) || 'depends on').slice(0, 40),
-      }));
-    }
+    if (body.floors !== undefined) patch.floors = [...new Set(body.floors)];
+    if (body.links !== undefined) patch.links = body.links.map((l) => ({ from: l.from, to: l.to, kind: (l.kind || 'depends on').slice(0, 40) }));
     const settings = await ctx.settings.update(patch);
     this.cache.invalidate(`${ctx.ns}:${ctx.owner}:world`);
     return { floors: await this.building.floorsFor(ctx, world), links: settings.links };
@@ -83,14 +69,13 @@ export class BuildingController {
 
   @Post('repos')
   @HttpCode(200)
-  async createRepo(@Ctx() context: ApiContext, @Body() body: Json) {
+  async createRepo(@Ctx() context: ApiContext, @Body() body: CreateRepoDto) {
     const { ctx, access } = await this.building.requireBuilding(context);
     if (!access.canCreateRepo) throw new HttpError(403, `You don't have permission to create repositories in ${ctx.owner}`);
     const world = await this.building.getWorld(ctx);
-    const name = need(body.name, REPO_RE, 'repository name');
     const created = await ctx.provider.createRepo(world, {
-      name,
-      description: String(body.description || '').slice(0, 350),
+      name: body.name,
+      description: (body.description || '').slice(0, 350),
       isPrivate: body.isPrivate !== false,
       autoInit: body.autoInit !== false,
     });
@@ -105,13 +90,14 @@ export class BuildingController {
 
   @Post('issues/:repo')
   @HttpCode(200)
-  async createIssue(@Ctx() context: ApiContext, @Param('repo', new Match(REPO_RE, 'repository name')) repo: string, @Body() body: Json) {
+  async createIssue(@Ctx() context: ApiContext, @Param('repo', new Match(REPO_RE, 'repository name')) repo: string, @Body() body: CreateIssueDto) {
     const { ctx } = await this.building.requireBuilding(context);
-    const title = String(body.title || '').trim();
-    if (!title) throw new HttpError(400, 'An issue needs a title');
-    const assignees = list(body.assignees, 10).map((a) => need(a, LOGIN_RE, 'assignee'));
-    const labels = list(body.labels, 20).map((l) => String(l).slice(0, 50));
-    const created = await ctx.provider.createIssue(ctx.owner, repo, { title: title.slice(0, 256), body: String(body.body || '').slice(0, 60_000), assignees, labels });
+    const created = await ctx.provider.createIssue(ctx.owner, repo, {
+      title: body.title.trim().slice(0, 256),
+      body: (body.body || '').slice(0, 60_000),
+      assignees: (body.assignees || []).slice(0, 10),
+      labels: (body.labels || []).slice(0, 20).map((l) => l.slice(0, 50)),
+    });
     this.invalidateRepo(ctx, repo);
     return created;
   }
@@ -121,15 +107,12 @@ export class BuildingController {
     @Ctx() context: ApiContext,
     @Param('repo', new Match(REPO_RE, 'repository name')) repo: string,
     @Param('number', new PositiveInt('issue number')) number: number,
-    @Body() body: Json,
+    @Body() body: UpdateIssueDto,
   ) {
     const { ctx } = await this.building.requireBuilding(context);
     const patch: IssuePatch = {};
-    if (body.assignees) patch.assignees = list(body.assignees, 10).map((a) => need(a, LOGIN_RE, 'assignee'));
-    if (body.state) {
-      if (!['open', 'closed'].includes(body.state)) throw new HttpError(400, 'Invalid state');
-      patch.state = body.state;
-    }
+    if (body.assignees) patch.assignees = body.assignees.slice(0, 10);
+    if (body.state) patch.state = body.state;
     const result = await ctx.provider.updateIssue(ctx.owner, repo, number, patch);
     this.invalidateRepo(ctx, repo);
     return result;
@@ -141,11 +124,10 @@ export class BuildingController {
     @Ctx() context: ApiContext,
     @Param('repo', new Match(REPO_RE, 'repository name')) repo: string,
     @Param('number', new PositiveInt('pull request number')) number: number,
-    @Body() body: Json,
+    @Body() body: MergeDto,
   ) {
     const { ctx } = await this.building.requireBuilding(context);
-    const method: MergeMethod = ['merge', 'squash', 'rebase'].includes(body.method) ? body.method : 'squash';
-    const result = await ctx.provider.mergePR(ctx.owner, repo, number, method);
+    const result = await ctx.provider.mergePR(ctx.owner, repo, number, body.method ?? 'squash');
     this.invalidateRepo(ctx, repo);
     return result;
   }

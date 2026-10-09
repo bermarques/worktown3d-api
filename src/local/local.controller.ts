@@ -1,6 +1,6 @@
 import { Body, Controller, Get, HttpCode, Post } from '@nestjs/common';
 import { HttpError } from '../common/http-error.js';
-import { need, OWNER_RE } from '../common/match.pipe.js';
+import { LocalConnectDto } from '../api/connect.dto.js';
 import { getConfig, setConnection } from './local-config.js';
 import { LocalGh } from './local-gh.service.js';
 
@@ -29,11 +29,11 @@ export class LocalController {
 
   @Post('connect')
   @HttpCode(200)
-  connect(@Body() body: Record<string, unknown>) {
+  connect(@Body() body: LocalConnectDto) {
     if (body.demo) setConnection({ owner: getConfig().owner, demo: true });
     else {
       if (!this.local.gh.authed) throw new HttpError(409, 'GitHub CLI is not logged in. Run `gh auth login` first.');
-      setConnection({ owner: need(body.owner, OWNER_RE, 'organization'), demo: false });
+      setConnection({ owner: body.owner!, demo: false });
     }
     this.local.selectProvider();
     return this.local.status();

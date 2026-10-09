@@ -43,12 +43,14 @@ only your company will use it).
 | Callback URL | `PUBLIC_URL/auth/callback` (for example `https://worktown3d.example.com/auth/callback`) |
 | Expire user authorization tokens | ✅ on |
 | Setup URL (optional) | `PUBLIC_URL/`, so people land back in Worktown3D after installing the app |
-| Webhook | off (not used yet) |
+| Webhook | on: URL `PUBLIC_URL/api/github/webhook`, and a random secret (the same value goes in `GITHUB_WEBHOOK_SECRET`) |
 | Where can it be installed | "Only on this account" for one company, "Any account" for a public product |
 
 **Repository permissions:** Metadata *read*, Issues *read & write*, Pull requests *read & write*,
 Contents *read & write* (needed to merge PRs), Commit statuses *read*, Checks *read*, and Administration *read & write*
 only if you want "New project" to create repositories. **Organization permissions:** Members *read*.
+
+**Subscribe to events:** Organization (installation and authorization events are always sent). With the webhook, uninstalling the app, removing someone from the organization or revoking the app's authorization takes effect at once; without it (`GITHUB_WEBHOOK_SECRET` unset), within a few minutes.
 
 Then generate a **client secret** and **install the app** on your organization.
 
@@ -91,7 +93,8 @@ Add this repository as a service next to the web app and a PostgreSQL service, w
 | `TRUST_PROXY` | `1` |
 | `PUBLIC_URL` | the web app's public URL |
 | `DATABASE_URL` | `${{Postgres.DATABASE_URL}}` |
-| `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `GITHUB_APP_SLUG` | from the GitHub App |
+| `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `GITHUB_APP_SLUG`, `GITHUB_WEBHOOK_SECRET` | from the GitHub App |
+| `LOG_FORMAT` | optional: `json` (default in hosted mode: one JSON object per line, with a line per request) or `text`. `NEST_LOG_LEVEL` (e.g. `>=warn`) narrows the levels |
 | `STRIPE_SECRET_KEY`, `STRIPE_PRICE_ID`, `STRIPE_WEBHOOK_SECRET`, `COMPLIMENTARY_ORGS` | optional, see below |
 
 Railway builds it with `npm run build` and starts it with `npm start`. Under **Settings → Deploy**, set the
@@ -150,5 +153,10 @@ Security details are in [SECURITY.md](SECURITY.md).
 
 ## Roadmap
 
-- **Validation and logging.** Request DTOs checked by validation pipes, and structured (JSON) logs.
-- **GitHub App webhooks**, so uninstalls and membership removals take effect instantly.
+- **Bigger plans.** More than one organization per subscription (plan limits per Stripe price), with upgrades and
+  downgrades through the customer portal.
+- **Character customization.** Profiles keyed by GitHub user id, editable only by that person (hair, colors,
+  accessories), served to everyone who sees them in a building. The web app adds the "Me" app on the phone.
+- **Multiplayer.** Live presence in shared (organization) buildings: who is connected and where, over a WebSocket
+  (the web app's proxy needs to forward upgrades). Personal buildings stay single-player, and a player's NPC leaves
+  the floor they're on so each person appears once.

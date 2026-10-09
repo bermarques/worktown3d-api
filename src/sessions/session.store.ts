@@ -167,6 +167,24 @@ export class SessionStore implements OnModuleInit, OnModuleDestroy {
     if (session) await this.prisma.session.deleteMany({ where: { id: session.id } });
   }
 
+  /**
+   * Send everyone in a building (or only `userId`) back to the building picker, on every instance: their next
+   * request has no building, and choosing it again re-checks their access with GitHub. Returns how many sessions.
+   */
+  async leaveBuilding(org: string, userId?: string) {
+    const { count } = await this.prisma.session.updateMany({
+      where: { org: { equals: org, mode: 'insensitive' }, ...(userId ? { userId } : {}) },
+      data: { org: null },
+    });
+    return count;
+  }
+
+  /** Sign a GitHub user out everywhere. Returns how many sessions ended. */
+  async destroyUser(userId: string) {
+    const { count } = await this.prisma.session.deleteMany({ where: { userId } });
+    return count;
+  }
+
   clearCookie() {
     return cookie(this.cookieName, '', { maxAgeSec: 0, secure: this.config.secure });
   }

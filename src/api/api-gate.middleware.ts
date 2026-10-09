@@ -23,7 +23,7 @@ export class ApiGateMiddleware implements NestMiddleware {
     try {
       req.ctx = await this.resolver.resolve(req);
     } catch (e) {
-      logger.error(`${req.method} ${req.originalUrl}: ${e instanceof Error ? e.message : e}`);
+      logger.error(`${req.method} ${req.path}: ${e instanceof Error ? e.message : e}`, { method: req.method, path: req.path, status: 500 }, e instanceof Error ? e.stack : undefined);
       return sendJson(res, 500, { error: 'Something went wrong on our side' });
     }
     const who = req.ctx.session ? req.ctx.session.id : clientIp(req, this.config.trustProxy);

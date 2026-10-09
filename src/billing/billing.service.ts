@@ -9,7 +9,6 @@ import { StripeClient, verifyWebhook } from './stripe.client.js';
 export const PLAN = { id: 'basic', name: 'Worktown3D Basic', orgLimit: 1 };
 
 const OPEN_STATUSES = new Set(['active', 'trialing', 'past_due']);
-const SESSION_RE = /^cs_[A-Za-z0-9_]{10,200}$/;
 
 const lower = (s: string) => String(s).toLowerCase();
 const isOpen = (acc: Account | null) => !!acc && OPEN_STATUSES.has(acc.status!);
@@ -144,8 +143,8 @@ export class BillingService {
     return { url: session.url };
   }
 
-  async confirm(user: SessionUser, sessionId: unknown) {
-    if (!SESSION_RE.test(String(sessionId))) throw new HttpError(400, 'Invalid checkout session');
+  /** `sessionId` is checked by ConfirmCheckoutDto. */
+  async confirm(user: SessionUser, sessionId: string) {
     const s = await this.stripe.get(`checkout/sessions/${sessionId}`, { expand: ['subscription'] });
     if (s.client_reference_id !== String(user.id)) throw new HttpError(403, 'This checkout belongs to someone else');
     if (s.subscription) {
