@@ -45,6 +45,10 @@ protection). Don't expose local mode to a network.
   minute; signing out, switching buildings, an expired GitHub sign-in or a webhook (uninstall, removal) closes the
   connection at once, on every instance. People only ever send their own position (small, validated, rate-limited
   messages), and only people in the same building see it.
+- Characters (`/api/me/character`): each person can only read and change their own, chosen by their session (keyed by
+  GitHub user id, never by a login in the request), and only after signing in with GitHub. A character is a fixed set
+  of colors (`#rrggbb`) and named options, checked on save and again when read back; nothing else is stored or shown
+  to others. Others only see the characters of people in a building they can already open.
 - The unauthenticated demo runs in a private in-memory sandbox per visitor with size limits (its session is in
   PostgreSQL like any other, its sandbox in the memory of each instance).
 

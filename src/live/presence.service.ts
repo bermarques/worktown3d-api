@@ -1,6 +1,7 @@
 import { Injectable, Logger, type BeforeApplicationShutdown, type OnModuleInit } from '@nestjs/common';
 import { WebSocket } from 'ws';
-import { CharactersService, MAX_CHARACTER_BYTES, type Character } from './characters.service.js';
+import type { Character } from '../profiles/character.js';
+import { CharacterStore } from '../profiles/character.store.js';
 import { CLOSE, type MoveTuple, type Player, type ServerMessage, type Spot } from './live.protocol.js';
 import { PresenceBus, type BusMessage, type KickFilter, type Received } from './presence.bus.js';
 
@@ -64,7 +65,7 @@ export class PresenceService implements OnModuleInit, BeforeApplicationShutdown 
 
   constructor(
     private readonly bus: PresenceBus,
-    private readonly characters: CharactersService,
+    private readonly characters: CharacterStore,
   ) {
     bus.onMessage((m) => this.received(m));
     // After (re)connecting we may have missed messages: everyone re-announces their players.
@@ -98,7 +99,7 @@ export class PresenceService implements OnModuleInit, BeforeApplicationShutdown 
       socket.close(CLOSE.full, 'This building is full');
       return null;
     }
-    const character = await this.characters.characterOf(user.id);
+    const character = await this.characters.get({ id: user.id, login: user.login });
     if (socket.readyState !== WebSocket.OPEN || this.closing) return null;
 
     const previous = this.local.get(building)?.get(user.id);
@@ -138,14 +139,8 @@ export class PresenceService implements OnModuleInit, BeforeApplicationShutdown 
     }
   }
 
-  /**
-   * Someone changed how their character looks: everyone in a building with them gets it at once, on every instance.
-   * Character customization calls this when a profile is saved.
-   */
+  /** Someone saved their character: everyone in a building with them gets it at once, on every instance. */
   updateCharacter(userId: number, character: Character | null) {
-    if (character && Buffer.byteLength(JSON.stringify(character)) > MAX_CHARACTER_BYTES) {
-      throw new Error(`A character can't be larger than ${MAX_CHARACTER_BYTES} bytes`);
-    }
     this.applyCharacter(userId, character);
     void this.bus.publish({ k: 'character', id: userId, c: character });
   }

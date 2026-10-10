@@ -3,7 +3,7 @@ import pg from 'pg';
 import { describeError } from '../common/http-error.js';
 import { AppConfig } from '../config/app-config.js';
 import { randomId } from '../sessions/cookies.js';
-import type { Character } from './characters.service.js';
+import type { Character } from '../profiles/character.js';
 import type { MoveTuple, Player } from './live.protocol.js';
 
 const CHANNEL = 'wt3d_presence';

@@ -84,3 +84,17 @@ model Session {
   @@index([userId])
   @@map("sessions")
 }
+
+/// How a signed-in person looks in the buildings (character customization). Only they can change it.
+model Profile {
+  /// GitHub user id: the profile stays theirs if they rename their account.
+  userId    String   @id @map("user_id")
+  /// Their current GitHub login, lower-cased, to find the characters of the people on a floor. Refreshed when they
+  /// sign in; a stale one is cleared when someone else signs in with that login.
+  loginKey  String?  @unique @map("login_key")
+  /// { skin, hair, hairStyle, eyes, eyeColor, shirt, pants, glasses, headwear } (see src/profiles/character.ts).
+  character Json
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("profiles")
+}

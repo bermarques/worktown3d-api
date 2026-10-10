@@ -2,8 +2,8 @@
 
 The API behind [Worktown3D](https://github.com/bermarques/company3d), a cartoon first-person 3D office for your
 GitHub organization. It reads and changes GitHub data for the building (repos, people, issues, pull requests),
-handles "Sign in with GitHub", stores building settings, runs subscriptions with Stripe and shows who else is in a
-building (multiplayer).
+handles "Sign in with GitHub", stores building settings and the characters people design, runs subscriptions with
+Stripe and shows who else is in a building (multiplayer).
 
 The browser never calls it directly. The Worktown3D web app forwards `/api` (including the `/api/live` WebSocket),
 `/auth` and `/stripe` to it, so everything happens on the web app's address (`PUBLIC_URL`).
@@ -29,7 +29,7 @@ repository) and open http://localhost:3000.
 Without the GitHub CLI you get a fictional **demo company** (`npm run demo` forces demo mode even when `gh` is set
 up). To use your real organization, install the GitHub CLI (`winget install --id GitHub.cli` or
 https://cli.github.com), run `gh auth login` and press **Check again** on the title screen. Local settings (connected
-org, floor order, repo connections) are saved in `data/config.json`.
+org, floor order, repo connections, and the character you design) are saved in `data/config.json`.
 
 ## Hosted mode
 
@@ -74,7 +74,8 @@ npm start
 the web app, which passes the client address on in `X-Forwarded-For`. Keep the API on a private network that only the
 web app can reach.
 
-Hosted mode needs **PostgreSQL** (`DATABASE_URL`): sign-in sessions, subscriptions and building settings live there.
+Hosted mode needs **PostgreSQL** (`DATABASE_URL`): sign-in sessions, subscriptions, building settings and characters
+live there.
 Run `npm run db:migrate` before starting a new version; the API refuses to start while migrations are pending.
 Because sessions are in the database, deploys don't sign people out and you can run more than one instance (rate
 limits and demo sandboxes are kept per instance, though).
@@ -134,6 +135,49 @@ subscribed. If a payment fails the building stays open while Stripe retries; onc
 Test with Stripe's test card `4242 4242 4242 4242` (any future date, any CVC). When you go live, repeat steps 1–4 in
 live mode and swap in the live keys.
 
+## Characters
+
+People who sign in with their own GitHub account design the character that represents them in the web app's
+passport (phone → **Me**): skin, eyes, clothes and accessories. In local mode that's whoever is signed in to the
+GitHub CLI; the demo company has no characters to design.
+
+A character is kept between sessions and shown to everyone who sees that person in a building: at their desk on the
+floors they work on, whether or not they're online, and walking around when they're there live (multiplayer). Only
+its owner can change it. Someone who never designed one gets a look drawn from their login, the same everywhere.
+
+| Route | |
+| --- | --- |
+| `GET /api/me/character` | `{ "character": Character }`, or `{ "character": null }` for the look drawn from your login |
+| `PUT /api/me/character` | save a whole `Character`; answers `{ "character": … }` as stored |
+| `DELETE /api/me/character` | back to the look drawn from your login (`{ "character": null }`) |
+
+A `Character` is:
+
+```json
+{
+  "skin": "#f1c27d", "hair": "#2b1d0e", "hairStyle": "short",
+  "eyes": "round", "eyeColor": "#1b1b24",
+  "shirt": "#4dabf7", "pants": "#343a40",
+  "glasses": "none", "headwear": "none"
+}
+```
+
+| Field | Values |
+| --- | --- |
+| `skin`, `hair`, `eyeColor`, `shirt`, `pants` | colors, `#rrggbb` |
+| `hairStyle` | `short`, `spiky`, `bun`, `long`, `curly`, `bald` |
+| `eyes` | `round`, `dots`, `happy`, `sleepy`, `big` |
+| `glasses` | `none`, `round`, `square`, `shades` |
+| `headwear` | `none`, `headphones`, `cap`, `beanie`, `party` |
+
+Floors carry the characters of the people on them: each of `GET /api/floor/:repo`'s `devs` has a `character`
+(`null` for the drawn look). When someone saves theirs while they're in a building, everyone there sees it at once (the
+live `character` message); everyone else gets it with the floor data.
+
+**Where they're kept:** hosted mode keeps them in the `profiles` table, one per GitHub user id, so they survive login
+renames: each sign-in updates the login on file, and a login belongs to whoever signed in with it last. Local mode keeps
+them in `data/config.json`, by login.
+
 ## Multiplayer
 
 In an organization's building, everyone signed in sees the other people who are there at the same time, walking
@@ -170,9 +214,9 @@ centimeters), `yaw` in radians.
 | `{ "t": "character", "id": 123, "character": {…} }` | someone changed how they look: redraw them |
 
 A `Player` is `{ "id", "login", "name", "character", "at" }`: `id` is the GitHub user id, `at` is
-`{ "floor", "x", "z", "yaw" }` or `null` until their first move, and `character` is how they look, `null` meaning the
-look drawn from their login (always `null` until character customization exists). Keep `character` up to date from
-`join` and `character` messages. While a player is on a floor, hide that floor's character for the same login, so
+`{ "floor", "x", "z", "yaw" }` or `null` until their first move, and `character` is how they look (see
+[Characters](#characters)), `null` meaning the look drawn from their login. Keep `character` up to date from `join`
+and `character` messages, and redraw that person's desk character too when they work on the floor you're showing. While a player is on a floor, hide that floor's character for the same login, so
 each person appears once.
 
 The close code says what to do next:
@@ -209,6 +253,8 @@ src/billing/                     subscriptions: plans, who may enter, Stripe cli
 src/webhooks/                    GitHub App webhooks: uninstalls, membership removals, revoked authorizations
 src/live/                        multiplayer: the /api/live WebSocket, and presence shared between instances
                                  (PostgreSQL LISTEN/NOTIFY)
+src/profiles/                    characters: what one looks like, /api/me/character, where they're kept
+                                 (PostgreSQL, or data/config.json in local mode)
 src/prisma/prisma.service.ts     database connection; refuses to start with pending migrations
 prisma/schema.prisma             database schema (migrations in prisma/migrations)
 scripts/migrate.mjs              `npm run db:migrate`, which also adopts databases from before Prisma
@@ -220,8 +266,3 @@ Security details are in [SECURITY.md](SECURITY.md).
 
 - **Bigger plans.** More than one organization per subscription (plan limits per Stripe price), with upgrades and
   downgrades through the customer portal.
-- **Character customization.** Profiles keyed by GitHub user id, editable only by that person (hair, colors,
-  accessories), served to everyone who sees them in a building. The web app adds the "Me" app on the phone.
-  Multiplayer is ready for it: players carry a `character` (read through `CharactersService` when they join), and
-  saving a profile calls `PresenceService.updateCharacter`, which redraws that person for everyone in their building
-  on every instance.

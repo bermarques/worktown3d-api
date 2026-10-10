@@ -1,6 +1,6 @@
 // Messages of the live presence WebSocket (/api/live). JSON text frames; documented in the README.
 import { REPO_RE } from '../common/match.pipe.js';
-import type { Character } from './characters.service.js';
+import type { Character } from '../profiles/character.js';
 
 /** Where a player stands: a repo's floor (null: the lobby), position on it (meters) and facing (radians). */
 export interface Spot {

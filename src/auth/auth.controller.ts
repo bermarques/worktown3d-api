@@ -8,6 +8,7 @@ import { cookie, parseCookies, randomId } from '../sessions/cookies.js';
 import { SecretBox } from '../sessions/secret-box.js';
 import { CLOSE } from '../live/live.protocol.js';
 import { PresenceService } from '../live/presence.service.js';
+import { PrismaCharacterStore } from '../profiles/character.store.js';
 import { SessionStore } from '../sessions/session.store.js';
 import { AuthService, safeNext } from './auth.service.js';
 
@@ -40,6 +41,7 @@ export class AuthController {
     private readonly sessions: SessionStore,
     private readonly box: SecretBox,
     private readonly presence: PresenceService,
+    private readonly characters: PrismaCharacterStore,
   ) {
     this.stateCookie = config.secure ? '__Host-wt3d_oauth' : 'wt3d_oauth';
   }
@@ -79,6 +81,7 @@ export class AuthController {
     // New session id on every sign-in (no session fixation); drop any previous session in this browser.
     await this.sessions.destroy(await this.sessions.get(req));
     const { cookie: sessionCookie } = await this.sessions.createUser(user, token);
+    await this.characters.syncLogin(user);
     logger.log(`@${user.login} signed in`);
     redirect(res, safeNext(p.next), [sessionCookie, clear]);
   }
