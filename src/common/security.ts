@@ -1,5 +1,6 @@
 // HTTP hardening shared by both modes: security headers, rate limits, CSRF and client address.
 import crypto from 'node:crypto';
+import type { IncomingMessage } from 'node:http';
 import type { Request } from 'express';
 import type { AppConfig } from '../config/app-config.js';
 
@@ -30,7 +31,7 @@ export function rateLimiter({ capacity, perMinute }: { capacity: number; perMinu
 }
 
 /** Client IP; only trusts X-Forwarded-For when explicitly told the app sits behind a proxy. */
-export function clientIp(req: Request, trustProxy: boolean) {
+export function clientIp(req: IncomingMessage, trustProxy: boolean) {
   if (trustProxy) {
     const xff = req.headers['x-forwarded-for'];
     if (typeof xff === 'string' && xff) return xff.split(',')[0].trim();

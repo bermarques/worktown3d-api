@@ -23,6 +23,10 @@ import { ViewCache } from './common/view-cache.js';
 import { AppConfig } from './config/app-config.js';
 import { LocalContextResolver } from './local/local-context.resolver.js';
 import { LocalGh } from './local/local-gh.service.js';
+import { CharactersService } from './live/characters.service.js';
+import { LiveGateway } from './live/live.gateway.js';
+import { PresenceBus } from './live/presence.bus.js';
+import { PresenceService } from './live/presence.service.js';
 import { LocalController } from './local/local.controller.js';
 import { PrismaService } from './prisma/prisma.service.js';
 import { SecretBox } from './sessions/secret-box.js';
@@ -47,6 +51,8 @@ export class AppModule implements NestModule {
         provide: ContextResolver,
         useClass: HostedContextResolver,
       });
+      // Multiplayer: who else is in a shared building, over the /api/live WebSocket.
+      providers.push(PresenceBus, PresenceService, CharactersService, LiveGateway);
       if (config.github!.webhookSecret) {
         controllers.push(GithubWebhookController);
         providers.push(GithubWebhookService);

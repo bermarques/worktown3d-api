@@ -4,6 +4,8 @@ import { OWNER_RE } from '../common/match.pipe.js';
 import { safeEqual } from '../common/security.js';
 import { ViewCache } from '../common/view-cache.js';
 import { AppConfig } from '../config/app-config.js';
+import { CLOSE } from '../live/live.protocol.js';
+import { PresenceService } from '../live/presence.service.js';
 import { SessionStore } from '../sessions/session.store.js';
 
 const logger = new Logger('GitHubWebhook');
@@ -31,6 +33,7 @@ export class GithubWebhookService {
     config: AppConfig,
     private readonly sessions: SessionStore,
     private readonly cache: ViewCache,
+    private readonly presence: PresenceService,
   ) {
     this.secret = config.github!.webhookSecret!;
   }
@@ -71,6 +74,7 @@ export class GithubWebhookService {
   private async closeBuilding(account: string | null, what: string) {
     if (!account) return null;
     const sessions = await this.sessions.leaveBuilding(account);
+    this.presence.kick({ building: account }, CLOSE.forbidden, 'You no longer have access to this building');
     this.cache.forgetOwner(account);
     return this.done(what, { account, sessions });
   }
@@ -79,6 +83,7 @@ export class GithubWebhookService {
     const id = userId(user?.id);
     if (!org || !id) return null;
     const sessions = await this.sessions.leaveBuilding(org, id);
+    this.presence.kick({ building: org, userId: Number(id) }, CLOSE.forbidden, 'You no longer have access to this building');
     this.cache.forgetUser(id);
     return this.done(what, { account: org, user: login(user.login), sessions });
   }
@@ -87,6 +92,7 @@ export class GithubWebhookService {
     const id = userId(user?.id);
     if (!id) return null;
     const sessions = await this.sessions.destroyUser(id);
+    this.presence.kick({ userId: Number(id) }, CLOSE.signedOut, 'Signed out');
     this.cache.forgetUser(id);
     return this.done(what, { user: login(user.login), sessions });
   }

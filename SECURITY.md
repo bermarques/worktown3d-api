@@ -39,6 +39,12 @@ protection). Don't expose local mode to a network.
   time limits. Request bodies are checked against a schema per route, and unknown fields are dropped.
 - Internal error details stay in the server log. Logs never include query strings (which can carry sign-in codes),
   and fields named like tokens, cookies, secrets or passwords are masked.
+- Multiplayer (`/api/live` WebSocket): the handshake gets the same host check as every request, and must come from
+  a page of `PUBLIC_URL` (`Origin`), so other sites can't open it with someone's cookie. Only signed-in members of an
+  organization's building get in, with the same membership and subscription checks as HTTP requests, re-checked every
+  minute; signing out, switching buildings, an expired GitHub sign-in or a webhook (uninstall, removal) closes the
+  connection at once, on every instance. People only ever send their own position (small, validated, rate-limited
+  messages), and only people in the same building see it.
 - The unauthenticated demo runs in a private in-memory sandbox per visitor with size limits (its session is in
   PostgreSQL like any other, its sandbox in the memory of each instance).
 
