@@ -23,12 +23,13 @@ import { ViewCache } from './common/view-cache.js';
 import { AppConfig } from './config/app-config.js';
 import { LocalContextResolver } from './local/local-context.resolver.js';
 import { LocalGh } from './local/local-gh.service.js';
-import { CharactersService } from './live/characters.service.js';
 import { LiveGateway } from './live/live.gateway.js';
 import { PresenceBus } from './live/presence.bus.js';
 import { PresenceService } from './live/presence.service.js';
 import { LocalController } from './local/local.controller.js';
 import { PrismaService } from './prisma/prisma.service.js';
+import { CharacterController } from './profiles/character.controller.js';
+import { CharacterStore, LocalCharacterStore, PrismaCharacterStore } from './profiles/character.store.js';
 import { SecretBox } from './sessions/secret-box.js';
 import { SessionStore } from './sessions/session.store.js';
 import { OrgSettingsService } from './settings/settings.service.js';
@@ -41,7 +42,7 @@ export class AppModule implements NestModule {
   constructor(private readonly config: AppConfig) {}
 
   static forRoot(config: AppConfig): DynamicModule {
-    const controllers: DynamicModule['controllers'] = [BuildingController];
+    const controllers: DynamicModule['controllers'] = [BuildingController, CharacterController];
     const providers: Provider[] = [{ provide: AppConfig, useValue: config }, ViewCache, RateLimits, BuildingService, { provide: APP_FILTER, useClass: ApiExceptionFilter }, { provide: APP_PIPE, useFactory: validationPipe }];
 
     if (config.hosted) {
@@ -51,8 +52,9 @@ export class AppModule implements NestModule {
         provide: ContextResolver,
         useClass: HostedContextResolver,
       });
-      // Multiplayer: who else is in a shared building, over the /api/live WebSocket.
-      providers.push(PresenceBus, PresenceService, CharactersService, LiveGateway);
+      // Characters (one profile per GitHub user), and multiplayer: who else is in a shared building, over /api/live.
+      providers.push(PrismaCharacterStore, { provide: CharacterStore, useExisting: PrismaCharacterStore });
+      providers.push(PresenceBus, PresenceService, LiveGateway);
       if (config.github!.webhookSecret) {
         controllers.push(GithubWebhookController);
         providers.push(GithubWebhookService);
@@ -64,7 +66,7 @@ export class AppModule implements NestModule {
     } else {
       // One person on this machine, through the GitHub CLI (or the demo company); settings in data/config.json.
       controllers.push(LocalController);
-      providers.push(LocalGh, { provide: ContextResolver, useClass: LocalContextResolver });
+      providers.push(LocalGh, { provide: ContextResolver, useClass: LocalContextResolver }, { provide: CharacterStore, useClass: LocalCharacterStore });
     }
 
     return { module: AppModule, controllers, providers };

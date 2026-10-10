@@ -7,6 +7,7 @@ import { ViewCache } from '../common/view-cache.js';
 import { AppConfig } from '../config/app-config.js';
 import { fetchAvatar } from '../github/github-provider.js';
 import type { IssuePatch } from '../github/types.js';
+import { CharacterStore } from '../profiles/character.store.js';
 import type { RepoLink } from '../settings/settings.service.js';
 import { CreateIssueDto, CreateRepoDto, MergeDto, SettingsDto, UpdateIssueDto } from './building.dto.js';
 import { BuildingService } from './building.service.js';
@@ -21,6 +22,7 @@ export class BuildingController {
     private readonly config: AppConfig,
     private readonly building: BuildingService,
     private readonly cache: ViewCache,
+    private readonly characters: CharacterStore,
   ) {}
 
   @Get('world')
@@ -44,7 +46,11 @@ export class BuildingController {
   async floor(@Ctx() context: ApiContext, @Param('repo', new Match(REPO_RE, 'repository name')) repo: string, @Query('fresh') fresh?: string) {
     const { ctx } = await this.building.requireBuilding(context);
     const world = await this.building.getWorld(ctx);
-    return this.cache.cached(`${ctx.ns}:${ctx.owner}:floor:${repo}`, 30_000, () => ctx.provider.getFloor(world, repo), fresh === '1');
+    const floor = await this.cache.cached(`${ctx.ns}:${ctx.owner}:floor:${repo}`, 30_000, () => ctx.provider.getFloor(world, repo), fresh === '1');
+    // Each person's character, read on every request: floors are cached, and characters change whenever someone saves.
+    if (ctx.provider.mode === 'demo') return floor; // the demo company's people are fictional
+    const characters = await this.characters.forLogins(floor.devs.map((d) => d.login));
+    return { ...floor, devs: floor.devs.map((d) => ({ ...d, character: characters.get(d.login.toLowerCase()) ?? null })) };
   }
 
   @Get('labels/:repo')
