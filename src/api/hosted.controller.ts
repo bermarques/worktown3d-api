@@ -5,6 +5,8 @@ import { HttpError } from '../common/http-error.js';
 import { RateLimits } from '../common/rate-limits.js';
 import { clientIp } from '../common/security.js';
 import { AppConfig } from '../config/app-config.js';
+import { CLOSE } from '../live/live.protocol.js';
+import { PresenceService } from '../live/presence.service.js';
 import { SessionStore } from '../sessions/session.store.js';
 import { BuildingService } from './building.service.js';
 import { ConnectDto } from './connect.dto.js';
@@ -18,6 +20,7 @@ export class HostedController {
     private readonly building: BuildingService,
     private readonly sessions: SessionStore,
     private readonly limits: RateLimits,
+    private readonly presence: PresenceService,
     @Optional() private readonly billing?: BillingService,
   ) {}
 
@@ -87,6 +90,8 @@ export class HostedController {
     const access = await this.building.accessFor(ctx, owner, true);
     if (access.role === 'none') throw new HttpError(403, `You're not a member of ${owner} on GitHub`);
     await this.sessions.setOrg(session, owner);
+    // A live connection belongs to the building it opened in: the page reconnects for the new one.
+    this.presence.kick({ sessionId: session.id }, CLOSE.noBuilding, 'Switched buildings');
     return this.status({ ...ctx, owner });
   }
 }

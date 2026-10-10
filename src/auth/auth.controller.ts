@@ -6,6 +6,8 @@ import { safeEqual, sameOrigin } from '../common/security.js';
 import { AppConfig } from '../config/app-config.js';
 import { cookie, parseCookies, randomId } from '../sessions/cookies.js';
 import { SecretBox } from '../sessions/secret-box.js';
+import { CLOSE } from '../live/live.protocol.js';
+import { PresenceService } from '../live/presence.service.js';
 import { SessionStore } from '../sessions/session.store.js';
 import { AuthService, safeNext } from './auth.service.js';
 
@@ -37,6 +39,7 @@ export class AuthController {
     private readonly auth: AuthService,
     private readonly sessions: SessionStore,
     private readonly box: SecretBox,
+    private readonly presence: PresenceService,
   ) {
     this.stateCookie = config.secure ? '__Host-wt3d_oauth' : 'wt3d_oauth';
   }
@@ -87,6 +90,7 @@ export class AuthController {
     const s = await this.sessions.get(req);
     if (s && s.kind === 'user') this.auth.revoke(s.token.access);
     await this.sessions.destroy(s);
+    if (s) this.presence.kick({ sessionId: s.id }, CLOSE.signedOut, 'Signed out');
     res.set('Set-Cookie', this.sessions.clearCookie());
     sendJson(res, 200, { ok: true });
   }

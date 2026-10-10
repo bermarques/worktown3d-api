@@ -2,10 +2,11 @@
 
 The API behind [Worktown3D](https://github.com/bermarques/company3d), a cartoon first-person 3D office for your
 GitHub organization. It reads and changes GitHub data for the building (repos, people, issues, pull requests),
-handles "Sign in with GitHub", stores building settings and runs subscriptions with Stripe.
+handles "Sign in with GitHub", stores building settings, runs subscriptions with Stripe and shows who else is in a
+building (multiplayer).
 
-The browser never calls it directly. The Worktown3D web app forwards `/api`, `/auth` and `/stripe` to it, so
-everything happens on the web app's address (`PUBLIC_URL`).
+The browser never calls it directly. The Worktown3D web app forwards `/api` (including the `/api/live` WebSocket),
+`/auth` and `/stripe` to it, so everything happens on the web app's address (`PUBLIC_URL`).
 
 It runs in two modes:
 
@@ -133,6 +134,59 @@ subscribed. If a payment fails the building stays open while Stripe retries; onc
 Test with Stripe's test card `4242 4242 4242 4242` (any future date, any CVC). When you go live, repeat steps 1–4 in
 live mode and swap in the live keys.
 
+## Multiplayer
+
+In an organization's building, everyone signed in sees the other people who are there at the same time, walking
+around the floors. Personal buildings and the demo stay single-player. It's part of hosted mode, over a WebSocket at
+`PUBLIC_URL/api/live`, so the web app's proxy has to forward WebSocket upgrades on that path.
+
+Several instances share presence through PostgreSQL `LISTEN`/`NOTIFY`, so nothing else is needed. That takes a
+direct connection to the database (Railway's PostgreSQL is one): a pooler in transaction mode, like PgBouncer, drops
+notifications.
+
+### Live protocol
+
+While a building is open, the page connects to `/api/live` (same origin, so the session cookie goes along). The
+connection belongs to the session's current building, and access is checked like any request: when it opens and
+every minute after. Messages are JSON text frames.
+
+**From the page**, about 10 times a second while the player moves (up to 15 a second are taken, the rest dropped):
+
+```json
+{ "t": "move", "floor": "api-gateway", "x": 12.5, "z": -3.25, "yaw": 1.57 }
+```
+
+`floor` is the repository whose floor the player is on, or `null` in the lobby. `x` and `z` are in meters (rounded to
+centimeters), `yaw` in radians.
+
+**From the server:**
+
+| Message | When |
+| --- | --- |
+| `{ "t": "welcome", "you": 123, "building": "acme", "players": [Player, …] }` | right after connecting: everyone already there |
+| `{ "t": "join", "player": Player }` | someone arrived, or reconnected: add them, or replace what you have for that `id` |
+| `{ "t": "leave", "id": 123 }` | someone left |
+| `{ "t": "moves", "m": [[id, floor, x, z, yaw], …] }` | where people moved, in batches every 100 ms (ignore your own id) |
+| `{ "t": "character", "id": 123, "character": {…} }` | someone changed how they look: redraw them |
+
+A `Player` is `{ "id", "login", "name", "character", "at" }`: `id` is the GitHub user id, `at` is
+`{ "floor", "x", "z", "yaw" }` or `null` until their first move, and `character` is how they look, `null` meaning the
+look drawn from their login (always `null` until character customization exists). Keep `character` up to date from
+`join` and `character` messages. While a player is on a floor, hide that floor's character for the same login, so
+each person appears once.
+
+The close code says what to do next:
+
+| Code | Meaning | Reconnect? |
+| --- | --- | --- |
+| 4000 | a personal or demo building: single-player | no |
+| 4001 | the same person opened this building somewhere else | no |
+| 4401 | not signed in, or signed out | no: show the sign-in screen |
+| 4403 | no access to this building (any more) | no |
+| 4409 | no building selected, or the session switched buildings | after loading the building again |
+| 4429 | the building is full (100 people) | later |
+| 1001, 1006, 1011 | server restarting, connection dropped, server error | yes, with backoff |
+
 ## How it works
 
 A [NestJS](https://nestjs.com) app in TypeScript, with [Prisma](https://www.prisma.io) for PostgreSQL.
@@ -153,6 +207,8 @@ src/github/                      GitHub access (`gh` CLI or the user's token), q
 src/settings/                    per-org building settings (PostgreSQL)
 src/billing/                     subscriptions: plans, who may enter, Stripe client and webhooks, records (PostgreSQL)
 src/webhooks/                    GitHub App webhooks: uninstalls, membership removals, revoked authorizations
+src/live/                        multiplayer: the /api/live WebSocket, and presence shared between instances
+                                 (PostgreSQL LISTEN/NOTIFY)
 src/prisma/prisma.service.ts     database connection; refuses to start with pending migrations
 prisma/schema.prisma             database schema (migrations in prisma/migrations)
 scripts/migrate.mjs              `npm run db:migrate`, which also adopts databases from before Prisma
@@ -166,6 +222,6 @@ Security details are in [SECURITY.md](SECURITY.md).
   downgrades through the customer portal.
 - **Character customization.** Profiles keyed by GitHub user id, editable only by that person (hair, colors,
   accessories), served to everyone who sees them in a building. The web app adds the "Me" app on the phone.
-- **Multiplayer.** Live presence in shared (organization) buildings: who is connected and where, over a WebSocket
-  (the web app's proxy needs to forward upgrades). Personal buildings stay single-player, and a player's NPC leaves
-  the floor they're on so each person appears once.
+  Multiplayer is ready for it: players carry a `character` (read through `CharactersService` when they join), and
+  saving a profile calls `PresenceService.updateCharacter`, which redraws that person for everyone in their building
+  on every instance.

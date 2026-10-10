@@ -3,6 +3,8 @@ import type { Response } from 'express';
 import type { ApiRequest } from '../api/context.js';
 import { AppConfig } from '../config/app-config.js';
 import { GhError } from '../github/gh.js';
+import { CLOSE } from '../live/live.protocol.js';
+import { PresenceService } from '../live/presence.service.js';
 import { SessionStore } from '../sessions/session.store.js';
 import { describeError, HttpError, statusOf } from './http-error.js';
 import { sendJson, sendText } from './respond.js';
@@ -23,6 +25,7 @@ export class ApiExceptionFilter implements ExceptionFilter {
   constructor(
     private readonly config: AppConfig,
     @Optional() private readonly sessions?: SessionStore,
+    @Optional() private readonly presence?: PresenceService,
   ) {}
 
   catch(e: unknown, host: ArgumentsHost) {
@@ -52,6 +55,7 @@ export class ApiExceptionFilter implements ExceptionFilter {
     // GitHub said the token is no good (revoked, expired): end this session cleanly.
     if (this.sessions && status === 401 && session && session.kind === 'user') {
       await this.sessions.destroy(session);
+      this.presence?.kick({ sessionId: session.id }, CLOSE.signedOut, 'Your GitHub sign-in expired');
       res.set('Set-Cookie', this.sessions.clearCookie());
       return sendJson(res, 401, { error: 'Your GitHub sign-in expired. Please sign in again.', signedOut: true });
     }
