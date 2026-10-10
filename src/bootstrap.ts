@@ -5,6 +5,7 @@ import { AppModule } from './app.module.js';
 import { printBanner } from './banner.js';
 import { AppLogger } from './common/app-logger.js';
 import { edgeMiddleware } from './common/edge.middleware.js';
+import { requestLog } from './common/request-log.middleware.js';
 import { AppConfig, ConfigError } from './config/app-config.js';
 
 /** Stop with a readable message for configuration problems; anything else is a bug and keeps its stack trace. */
@@ -23,9 +24,10 @@ try {
   exitOn(e);
 }
 
-const app = await NestFactory.create<NestExpressApplication>(AppModule.forRoot(config), { bodyParser: false, logger: new AppLogger() });
+const app = await NestFactory.create<NestExpressApplication>(AppModule.forRoot(config), { bodyParser: false, logger: new AppLogger(config.logFormat) });
 app.disable('x-powered-by');
 app.set('etag', false);
+if (config.hosted) app.use(requestLog(config));
 app.use(edgeMiddleware(config));
 app.enableShutdownHooks(['SIGTERM', 'SIGINT']);
 process.once('SIGTERM', () => setTimeout(() => process.exit(0), 5000).unref());

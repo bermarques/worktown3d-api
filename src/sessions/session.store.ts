@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import { Injectable, Logger, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
 import type { Request } from 'express';
-import { HttpError } from '../common/http-error.js';
+import { describeError, HttpError } from '../common/http-error.js';
 import { AppConfig } from '../config/app-config.js';
 import type { Session as SessionRow } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
@@ -167,6 +167,24 @@ export class SessionStore implements OnModuleInit, OnModuleDestroy {
     if (session) await this.prisma.session.deleteMany({ where: { id: session.id } });
   }
 
+  /**
+   * Send everyone in a building (or only `userId`) back to the building picker, on every instance: their next
+   * request has no building, and choosing it again re-checks their access with GitHub. Returns how many sessions.
+   */
+  async leaveBuilding(org: string, userId?: string) {
+    const { count } = await this.prisma.session.updateMany({
+      where: { org: { equals: org, mode: 'insensitive' }, ...(userId ? { userId } : {}) },
+      data: { org: null },
+    });
+    return count;
+  }
+
+  /** Sign a GitHub user out everywhere. Returns how many sessions ended. */
+  async destroyUser(userId: string) {
+    const { count } = await this.prisma.session.deleteMany({ where: { userId } });
+    return count;
+  }
+
   clearCookie() {
     return cookie(this.cookieName, '', { maxAgeSec: 0, secure: this.config.secure });
   }
@@ -193,7 +211,7 @@ export class SessionStore implements OnModuleInit, OnModuleDestroy {
     try {
       await this.prisma.session.deleteMany({ where: { expiresAt: { lt: new Date() } } });
     } catch (e) {
-      logger.warn(`Could not remove expired sessions: ${e instanceof Error ? e.message : e}`);
+      logger.warn(`Could not remove expired sessions: ${describeError(e)}`);
     }
   }
 }

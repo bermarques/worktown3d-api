@@ -2,20 +2,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { Injectable, Logger, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
 import { PrismaPg } from '@prisma/adapter-pg';
+import { databaseReason } from '../common/http-error.js';
 import { AppConfig, ConfigError } from '../config/app-config.js';
 import { PrismaClient } from '../generated/prisma/client.js';
 
 const logger = new Logger('Database');
 const MIGRATIONS_DIR = path.join(import.meta.dirname, '..', '..', 'prisma', 'migrations');
-
-/** One line on why connecting failed; Prisma wraps the driver's error (if any) in a multi-line message. */
-function connectionError(e: unknown) {
-  const err = e as { code?: string; message?: string; meta?: { driverAdapterError?: { cause?: { originalMessage?: string; kind?: string; host?: string } } } };
-  const cause = err.meta?.driverAdapterError?.cause;
-  if (cause) return cause.originalMessage || [cause.kind, cause.host].filter(Boolean).join(' ');
-  if (err.code && !/^P\d+$/.test(err.code)) return err.code; // e.g. ECONNREFUSED
-  return err.message?.trim().split('\n').pop() || String(e);
-}
 
 /** The PostgreSQL connection (hosted mode). Migrations are applied by `npm run db:migrate`, not at startup. */
 @Injectable()
@@ -34,7 +26,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
       await this.$connect();
       await this.$queryRaw`SELECT 1`;
     } catch (e) {
-      throw new ConfigError(`Could not connect to the database: ${connectionError(e)}`);
+      throw new ConfigError(`Could not connect to the database: ${e instanceof Error ? databaseReason(e) : e}`);
     }
     await this.checkMigrations();
   }

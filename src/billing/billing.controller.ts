@@ -2,9 +2,10 @@ import { Body, Controller, Delete, Get, HttpCode, Param, Post } from '@nestjs/co
 import { BuildingService } from '../api/building.service.js';
 import { Ctx, type ApiContext } from '../api/context.js';
 import { HttpError } from '../common/http-error.js';
-import { need, OWNER_RE } from '../common/match.pipe.js';
+import { Match, OWNER_RE } from '../common/match.pipe.js';
 import { ViewCache } from '../common/view-cache.js';
 import { AppConfig } from '../config/app-config.js';
+import { ConfirmCheckoutDto, ConnectWorkspaceDto } from './billing.dto.js';
 
 /** The signed-in person's subscription and the organizations connected to it (hosted mode). */
 @Controller('api')
@@ -30,7 +31,7 @@ export class BillingController {
 
   @Post('billing/confirm')
   @HttpCode(200)
-  confirm(@Ctx() ctx: ApiContext, @Body() body: Record<string, unknown>) {
+  confirm(@Ctx() ctx: ApiContext, @Body() body: ConfirmCheckoutDto) {
     const { billing, user } = this.building.requireSubscriber(ctx);
     return billing.confirm(user, body.sessionId);
   }
@@ -44,9 +45,9 @@ export class BillingController {
 
   @Post('workspaces')
   @HttpCode(200)
-  async connect(@Ctx() context: ApiContext, @Body() body: Record<string, unknown>) {
+  async connect(@Ctx() context: ApiContext, @Body() body: ConnectWorkspaceDto) {
     const { billing, user, ctx } = this.building.requireSubscriber(context);
-    const org = need(body.org, OWNER_RE, 'organization');
+    const org = body.org;
     if (!this.config.orgAllowed(org)) throw new HttpError(403, `This Worktown3D server isn't set up for ${org}`);
     const result = await billing.connect(user, org, ctx.provider);
     this.cache.invalidate(`${ctx.ns}:${org}:access`);
@@ -54,8 +55,8 @@ export class BillingController {
   }
 
   @Delete('workspaces/:org')
-  disconnect(@Ctx() ctx: ApiContext, @Param('org') org: string) {
+  disconnect(@Ctx() ctx: ApiContext, @Param('org', new Match(OWNER_RE, 'organization')) org: string) {
     const { billing, user } = this.building.requireSubscriber(ctx);
-    return billing.disconnect(user, need(org, OWNER_RE, 'organization'));
+    return billing.disconnect(user, org);
   }
 }

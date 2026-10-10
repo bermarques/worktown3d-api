@@ -1,5 +1,6 @@
 import { Controller, Get, Logger, Post, Query, Req, Res } from '@nestjs/common';
 import type { Request, Response } from 'express';
+import { describeError } from '../common/http-error.js';
 import { sendJson } from '../common/respond.js';
 import { safeEqual, sameOrigin } from '../common/security.js';
 import { AppConfig } from '../config/app-config.js';
@@ -68,7 +69,7 @@ export class AuthController {
       token = await this.auth.exchangeCode(code, p.verifier);
       user = await this.auth.fetchUser(token.access);
     } catch (e) {
-      logger.warn(`sign-in failed: ${e instanceof Error ? e.message : e}`);
+      logger.warn(`sign-in failed: ${describeError(e)}`);
       return fail('github');
     }
 

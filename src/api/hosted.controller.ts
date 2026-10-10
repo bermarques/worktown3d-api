@@ -2,12 +2,12 @@ import { Body, Controller, Get, HttpCode, Optional, Post, Req, Res } from '@nest
 import type { Response } from 'express';
 import { BillingService } from '../billing/billing.service.js';
 import { HttpError } from '../common/http-error.js';
-import { need, OWNER_RE } from '../common/match.pipe.js';
 import { RateLimits } from '../common/rate-limits.js';
 import { clientIp } from '../common/security.js';
 import { AppConfig } from '../config/app-config.js';
 import { SessionStore } from '../sessions/session.store.js';
 import { BuildingService } from './building.service.js';
+import { ConnectDto } from './connect.dto.js';
 import { Ctx, type ApiContext, type ApiRequest } from './context.js';
 
 /** Status, sign-in state and organization choice in hosted mode. */
@@ -79,11 +79,11 @@ export class HostedController {
 
   @Post('connect')
   @HttpCode(200)
-  async connect(@Ctx() ctx: ApiContext, @Body() body: Record<string, unknown>) {
+  async connect(@Ctx() ctx: ApiContext, @Body() body: ConnectDto) {
     this.building.requireSession(ctx);
     const session = ctx.session!;
     if (session.kind === 'demo') return this.status(ctx);
-    const owner = need(body.owner, OWNER_RE, 'organization');
+    const owner = body.owner;
     const access = await this.building.accessFor(ctx, owner, true);
     if (access.role === 'none') throw new HttpError(403, `You're not a member of ${owner} on GitHub`);
     await this.sessions.setOrg(session, owner);

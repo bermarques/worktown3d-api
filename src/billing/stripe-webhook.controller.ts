@@ -1,5 +1,6 @@
 import { Controller, Logger, Post, Req, Res } from '@nestjs/common';
 import type { Request, Response } from 'express';
+import { describeError } from '../common/http-error.js';
 import { sendJson } from '../common/respond.js';
 import { BillingService } from './billing.service.js';
 import { StripeError } from './stripe.client.js';
@@ -18,7 +19,7 @@ export class StripeWebhookController {
       return sendJson(res, 200, { received: true });
     } catch (e) {
       if (e instanceof StripeError && e.status === 400) return sendJson(res, 400, { error: e.message });
-      logger.error(`webhook failed: ${e instanceof Error ? e.message : e}`);
+      logger.error(`webhook failed: ${describeError(e)}`, e instanceof Error ? e.stack : undefined);
       return sendJson(res, 500, { error: 'Webhook processing failed' }); // Stripe will retry
     }
   }

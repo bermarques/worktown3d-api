@@ -25,6 +25,17 @@ export class ViewCache {
     for (const k of this.entries.keys()) if (k.startsWith(prefix)) this.entries.delete(k);
   }
 
+  /** Everything cached about one building, for every viewer, plus the building lists that may show it. */
+  forgetOwner(owner: string) {
+    const segment = `:${owner.toLowerCase()}:`;
+    for (const k of this.entries.keys()) if (k.toLowerCase().includes(segment) || k.endsWith(':owners')) this.entries.delete(k);
+  }
+
+  /** Everything cached for one signed-in GitHub user. */
+  forgetUser(userId: string | number) {
+    this.invalidate(`u:${userId}:`);
+  }
+
   clear() {
     this.entries.clear();
   }

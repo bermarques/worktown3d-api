@@ -1,5 +1,5 @@
 import { Module, RequestMethod, type DynamicModule, type MiddlewareConsumer, type NestModule, type Provider } from '@nestjs/common';
-import { APP_FILTER } from '@nestjs/core';
+import { APP_FILTER, APP_PIPE } from '@nestjs/core';
 import { ApiGateMiddleware } from './api/api-gate.middleware.js';
 import { BuildingController } from './api/building.controller.js';
 import { BuildingService } from './api/building.service.js';
@@ -18,6 +18,7 @@ import { StripeClient } from './billing/stripe.client.js';
 import { ApiExceptionFilter } from './common/api-exception.filter.js';
 import { jsonBody, rawBody } from './common/body-parsers.js';
 import { RateLimits } from './common/rate-limits.js';
+import { validationPipe } from './common/validation.js';
 import { ViewCache } from './common/view-cache.js';
 import { AppConfig } from './config/app-config.js';
 import { LocalContextResolver } from './local/local-context.resolver.js';
@@ -27,6 +28,8 @@ import { PrismaService } from './prisma/prisma.service.js';
 import { SecretBox } from './sessions/secret-box.js';
 import { SessionStore } from './sessions/session.store.js';
 import { OrgSettingsService } from './settings/settings.service.js';
+import { GithubWebhookController } from './webhooks/github-webhook.controller.js';
+import { GithubWebhookService } from './webhooks/github-webhook.service.js';
 
 /** The application, wired for its mode: only what the configuration turns on is registered. */
 @Module({})
@@ -35,7 +38,7 @@ export class AppModule implements NestModule {
 
   static forRoot(config: AppConfig): DynamicModule {
     const controllers: DynamicModule['controllers'] = [BuildingController];
-    const providers: Provider[] = [{ provide: AppConfig, useValue: config }, ViewCache, RateLimits, BuildingService, { provide: APP_FILTER, useClass: ApiExceptionFilter }];
+    const providers: Provider[] = [{ provide: AppConfig, useValue: config }, ViewCache, RateLimits, BuildingService, { provide: APP_FILTER, useClass: ApiExceptionFilter }, { provide: APP_PIPE, useFactory: validationPipe }];
 
     if (config.hosted) {
       // Everyone signs in with GitHub; sessions, settings and subscriptions live in PostgreSQL.
@@ -44,6 +47,10 @@ export class AppModule implements NestModule {
         provide: ContextResolver,
         useClass: HostedContextResolver,
       });
+      if (config.github!.webhookSecret) {
+        controllers.push(GithubWebhookController);
+        providers.push(GithubWebhookService);
+      }
       if (config.stripe) {
         controllers.push(StripeWebhookController);
         providers.push(StripeClient, BillingRepository, BillingService);
@@ -58,8 +65,15 @@ export class AppModule implements NestModule {
   }
 
   configure(consumer: MiddlewareConsumer) {
-    consumer.apply(ApiGateMiddleware, jsonBody).forRoutes({ path: 'api/*path', method: RequestMethod.ALL });
+    const githubWebhook = { path: 'api/github/webhook', method: RequestMethod.POST };
+    const api = consumer.apply(ApiGateMiddleware, jsonBody);
+    // GitHub's deliveries skip the API gate (CSRF, session, rate limits): their signature authenticates them.
+    if (this.config.github?.webhookSecret) {
+      api.exclude(githubWebhook);
+      consumer.apply(rawBody(5_000_000)).forRoutes(githubWebhook);
+    }
+    api.forRoutes({ path: 'api/*path', method: RequestMethod.ALL });
     if (this.config.hosted) consumer.apply(AuthGateMiddleware).forRoutes({ path: 'auth/*path', method: RequestMethod.ALL });
-    if (this.config.stripe) consumer.apply(rawBody).forRoutes({ path: 'stripe/webhook', method: RequestMethod.ALL });
+    if (this.config.stripe) consumer.apply(rawBody(1_000_000)).forRoutes({ path: 'stripe/webhook', method: RequestMethod.ALL });
   }
 }
